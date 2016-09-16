@@ -55,7 +55,7 @@ func (c *Controller) newConn(nc net.Conn) *conn {
 	return &conn{
 		ctrl:     c,
 		conn:     nc,
-		inbound:  make(chan *message, 100),
+		inbound:  make(chan *Message, 100),
 		outbound: make(chan []byte, 100),
 	}
 }
@@ -64,7 +64,7 @@ type conn struct {
 	ctrl     *Controller
 	conn     net.Conn
 	bufr     *bufio.Reader
-	inbound  chan *message
+	inbound  chan *Message
 	outbound chan []byte
 	err      error
 }
@@ -93,6 +93,8 @@ func (c *conn) serve() {
 		wg.Wait()
 		close(c.outbound)
 	}()
+
+	var dpid uint64
 	for c.err == nil {
 		typ, payload, err := c.readData()
 		if err != nil {
@@ -107,8 +109,11 @@ func (c *conn) serve() {
 		case ofp4.OFPT_ECHO_REQUEST:
 			payload[1] = ofp4.OFPT_ECHO_REPLY
 			c.outbound <- payload
+		case ofp4.OFPT_FEATURES_REPLY:
+			dpid = ofp4.SwitchFeatures(payload).DatapathId()
+			fallthrough
 		default:
-			c.inbound <- &message{typ, payload}
+			c.inbound <- &Message{dpid, typ, payload}
 		}
 	}
 }
@@ -134,16 +139,7 @@ func (c *conn) readData() (typ uint8, payload []byte, err error) {
 
 func (c *conn) handleLoop(w *Writer) {
 	for m := range c.inbound {
-		switch m.Type {
-		case ofp4.OFPT_FEATURES_REPLY:
-			c.ctrl.Handler.Features(w, ofp4.SwitchFeatures(m.Payload))
-		case ofp4.OFPT_PACKET_IN:
-			c.ctrl.Handler.PacketIn(w, ofp4.PacketIn(m.Payload))
-		case ofp4.OFPT_FLOW_REMOVED:
-			c.ctrl.Handler.FlowRemoved(w, ofp4.FlowRemoved(m.Payload))
-		case ofp4.OFPT_MULTIPART_REPLY:
-			c.ctrl.Handler.MultipartReply(w, ofp4.MultipartReply(m.Payload))
-		}
+		c.ctrl.Handler.HandleMessage(w, m)
 	}
 }
 
@@ -162,11 +158,6 @@ func (c *conn) writeLoop() {
 			return
 		}
 	}
-}
-
-type message struct {
-	Type    uint8
-	Payload []byte
 }
 
 var (
