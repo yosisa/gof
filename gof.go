@@ -15,6 +15,7 @@ type FancyHandler interface {
 	PacketIn(*Writer, ofp4.PacketIn)
 	FlowRemoved(*Writer, ofp4.FlowRemoved)
 	MultipartReply(*Writer, ofp4.MultipartReply)
+	PortStatus(*Writer, ofp4.PortStatus)
 }
 
 func FancyHandle(h FancyHandler) Handler {
@@ -35,6 +36,8 @@ func (h fancyHandler) HandleMessage(w *Writer, m *Message) {
 		h.h.FlowRemoved(w, ofp4.FlowRemoved(m.Payload))
 	case ofp4.OFPT_MULTIPART_REPLY:
 		h.h.MultipartReply(w, ofp4.MultipartReply(m.Payload))
+	case ofp4.OFPT_PORT_STATUS:
+		h.h.PortStatus(w, ofp4.PortStatus(m.Payload))
 	}
 }
 
@@ -44,6 +47,7 @@ func (h NopFancyHandler) Features(w *Writer, d ofp4.SwitchFeatures)       {}
 func (h NopFancyHandler) PacketIn(w *Writer, d ofp4.PacketIn)             {}
 func (h NopFancyHandler) FlowRemoved(w *Writer, d ofp4.FlowRemoved)       {}
 func (h NopFancyHandler) MultipartReply(w *Writer, d ofp4.MultipartReply) {}
+func (h NopFancyHandler) PortStatus(W *Writer, d ofp4.PortStatus)         {}
 
 func AutoInstantiate(f func(uint64) Handler) Handler {
 	return &autoInstantiateHandler{
